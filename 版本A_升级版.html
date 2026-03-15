@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 助手工具箱</title>
+<!-- Markdown 渲染库 -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f7f6f3; --surface: #ffffff; --border: #e8e6e0; --border-strong: #ccc9c0;
+    --text: #1a1917; --text-muted: #6b6860; --text-faint: #9e9b94;
+    --accent: #1a1917; --accent-fg: #ffffff; --radius: 10px; --radius-sm: 6px;
+  }
+  body { font-family: -apple-system,'PingFang SC','Microsoft YaHei',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+  .app { display:flex; height:100vh; }
+  .sidebar { width:260px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+  .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .sidebar-header { padding:20px 16px 12px; border-bottom:1px solid var(--border); }
+  .sidebar-header h1 { font-size:15px; font-weight:600; letter-spacing:-0.01em; }
+  .sidebar-header p { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .api-toggle { padding:10px 16px; border-bottom:1px solid var(--border); }
+  .api-toggle-btn { width:100%; text-align:left; font-size:12px; color:var(--text-muted); background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:6px; padding:4px 0; }
+  .api-toggle-btn:hover { color:var(--text); }
+  .api-panel { overflow:hidden; transition:max-height 0.2s; max-height:0; }
+  .api-panel.open { max-height:320px; }
+  .api-panel-inner { padding:10px 0 4px; display:flex; flex-direction:column; gap:8px; }
+  .api-field label { font-size:11px; color:var(--text-faint); display:block; margin-bottom:3px; }
+  .api-field input { width:100%; font-size:12px; padding:6px 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); color:var(--text); outline:none; }
+  .api-field input:focus { border-color:var(--border-strong); }
+  .api-save { width:100%; padding:6px; font-size:12px; background:var(--accent); color:var(--accent-fg); border:none; border-radius:var(--radius-sm); cursor:pointer; margin-top:2px; }
+  .api-status { font-size:11px; color:var(--text-faint); padding:3px 0; text-align:center; }
+  .prompt-list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:4px; }
+  .prompt-item { padding:10px 12px; border-radius:var(--radius); border:1.5px solid transparent; cursor:pointer; transition:all 0.12s; }
+  .prompt-item:hover { background:var(--bg); }
+  .prompt-item.active { border-color:var(--accent); background:var(--bg); }
+  .prompt-item-top { display:flex; align-items:center; gap:8px; }
+  .prompt-icon { font-size:18px; line-height:1; }
+  .prompt-name { font-size:13px; font-weight:500; }
+  .prompt-desc { font-size:11px; color:var(--text-muted); margin-top:3px; line-height:1.4; }
+  .chat-topbar { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; background:var(--surface); }
+  .chat-topbar-icon { font-size:22px; }
+  .chat-topbar-info h2 { font-size:15px; font-weight:600; }
+  .chat-topbar-info p { font-size:12px; color:var(--text-muted); }
+  .clear-btn { margin-left:auto; font-size:12px; color:var(--text-faint); background:none; border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px 10px; cursor:pointer; }
+  .clear-btn:hover { border-color:var(--border-strong); color:var(--text-muted); }
+  .messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:14px; }
+  .empty-chat { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:var(--text-faint); }
+  .empty-chat .big-icon { font-size:40px; }
+  .empty-chat p { font-size:13px; }
+  .msg-row { display:flex; gap:10px; max-width:780px; }
+  .msg-row.user { flex-direction:row-reverse; align-self:flex-end; }
+  .msg-avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; margin-top:2px; }
+  .msg-row.ai .msg-avatar { background:var(--bg); border:1px solid var(--border); }
+  .msg-row.user .msg-avatar { background:var(--accent); color:var(--accent-fg); font-size:11px; font-weight:600; }
+  .msg-bubble { padding:10px 14px; border-radius:var(--radius); font-size:14px; line-height:1.65; max-width:640px; word-break:break-word; }
+  .msg-row.ai .msg-bubble { background:var(--surface); border:1px solid var(--border); }
+  .msg-row.user .msg-bubble { background:var(--accent); color:var(--accent-fg); white-space:pre-wrap; }
+  .msg-row.sys { justify-content:center; }
+  .msg-row.sys .msg-bubble { background:none; border:none; font-size:12px; color:var(--text-faint); padding:4px 0; }
+
+  /* Markdown 样式 */
+  .msg-bubble h1,.msg-bubble h2,.msg-bubble h3 { font-weight:600; margin:12px 0 6px; line-height:1.4; }
+  .msg-bubble h1 { font-size:17px; } .msg-bubble h2 { font-size:15px; } .msg-bubble h3 { font-size:14px; }
+  .msg-bubble p { margin:6px 0; }
+  .msg-bubble ul,.msg-bubble ol { padding-left:20px; margin:6px 0; }
+  .msg-bubble li { margin:3px 0; }
+  .msg-bubble code { font-family:monospace; font-size:12px; background:#f1f0ed; padding:1px 5px; border-radius:3px; }
+  .msg-bubble pre { background:#f1f0ed; border-radius:6px; padding:12px; overflow-x:auto; margin:8px 0; }
+  .msg-bubble pre code { background:none; padding:0; font-size:12px; }
+  .msg-bubble table { border-collapse:collapse; width:100%; margin:8px 0; font-size:13px; }
+  .msg-bubble th,.msg-bubble td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+  .msg-bubble th { background:var(--bg); font-weight:600; }
+  .msg-bubble blockquote { border-left:3px solid var(--border-strong); padding-left:10px; color:var(--text-muted); margin:6px 0; }
+  .msg-bubble strong { font-weight:600; }
+  .msg-bubble a { color:#2563eb; text-decoration:underline; }
+  .msg-bubble p:first-child { margin-top:0; } .msg-bubble p:last-child { margin-bottom:0; }
+
+  .input-area { padding:14px 20px; border-top:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+  .input-box { display:flex; gap:8px; align-items:flex-end; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:8px 8px 8px 14px; transition:border-color 0.15s; }
+  .input-box:focus-within { border-color:var(--border-strong); }
+  .input-box textarea { flex:1; font-size:14px; line-height:1.5; background:none; border:none; outline:none; color:var(--text); resize:none; max-height:120px; font-family:inherit; }
+  .send-btn { padding:7px 16px; font-size:13px; font-weight:500; background:var(--accent); color:var(--accent-fg); border:none; border-radius:var(--radius-sm); cursor:pointer; flex-shrink:0; transition:opacity 0.15s; }
+  .send-btn:hover { opacity:0.8; } .send-btn:disabled { opacity:0.35; cursor:not-allowed; }
+  .input-hint { font-size:11px; color:var(--text-faint); margin-top:6px; text-align:right; }
+  .loading-tip { font-size:12px; color:var(--text-faint); text-align:center; padding:20px; }
+  ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--border-strong); border-radius:2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>🧰 AI 工具箱</h1>
+      <p>选择一套指令开始对话</p>
+    </div>
+    <div class="api-toggle">
+      <button class="api-toggle-btn" onclick="toggleApi()">
+        <span id="api-arrow">▶</span> API 配置
+        <span id="api-dot" style="width:6px;height:6px;border-radius:50%;background:#e2e8f0;margin-left:auto;display:inline-block;"></span>
+      </button>
+      <div class="api-panel" id="api-panel">
+        <div class="api-panel-inner">
+          <div class="api-field"><label>Base URL</label><input id="baseUrl" placeholder="https://api.openai.com/v1" /></div>
+          <div class="api-field"><label>API Key</label><input id="apiKey" type="password" placeholder="sk-..." /></div>
+          <div class="api-field"><label>模型</label><input id="model" placeholder="gpt-4o" /></div>
+          <button class="api-save" onclick="saveApi()">保存配置</button>
+          <div class="api-status" id="api-status">未配置</div>
+        </div>
+      </div>
+    </div>
+    <div class="prompt-list" id="prompt-list">
+      <div class="loading-tip">加载指令中…</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="chat-topbar">
+      <div class="chat-topbar-icon" id="topbar-icon">💬</div>
+      <div class="chat-topbar-info">
+        <h2 id="topbar-name">请从左侧选择指令</h2>
+        <p id="topbar-desc">选好后填写 API Key 即可开始对话</p>
+      </div>
+      <button class="clear-btn" onclick="clearChat()">清空对话</button>
+    </div>
+    <div class="messages" id="messages">
+      <div class="empty-chat" id="empty-hint">
+        <div class="big-icon">👈</div>
+        <p>从左侧选择一套 AI 指令</p>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="input-box">
+        <textarea id="userInput" rows="1" placeholder="选择指令后在此输入…"
+          oninput="autoResize(this)"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMsg()">发送</button>
+      </div>
+      <div class="input-hint">Enter 发送 · Shift+Enter 换行</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// ⚙️ 唯一需要修改的地方：填入你的 GitHub 指令文件地址
+//
+// 步骤：
+// 1. 在 GitHub 新建一个文件，比如 prompts.json
+// 2. 把下面"指令文件格式"的内容填进去
+// 3. 打开该文件，点 Raw 按钮，复制地址，粘贴到下方
+//
+// 如果暂时没有 GitHub，把下方地址留空，
+// 程序会自动使用内置的示例指令
+// ============================================================
+const REMOTE_URL = 'https://raw.githubusercontent.com/zhengying2332/zhiling/main/prompts.json';
+// 示例：'https://raw.githubusercontent.com/你的用户名/仓库名/main/prompts.json'
+
+// ============================================================
+// 📦 内置备用指令（当 REMOTE_URL 为空或加载失败时使用）
+// 如果你不用 GitHub 同步，直接在这里改指令也可以
+// ============================================================
+const FALLBACK_PROMPTS = [
+  {
+    id: 1, icon: '✍️', name: '文案助手',
+    desc: '写出吸引人的文案、标题和广告语',
+    prompt: '你是一个专业的中文文案写作助手，擅长创作吸引眼球的标题、广告语和营销文案。风格简洁有力，富有感染力。每次提供 2-3 个不同风格的版本供选择。'
+  },
+  {
+    id: 2, icon: '🌍', name: '翻译专家',
+    desc: '中英文互译，表达地道自然',
+    prompt: '你是一位专业翻译，精通中英文互译。翻译时忠实原意、表达自然、符合目标语言习惯。对有歧义的词汇注明并给出多种译法。'
+  },
+  {
+    id: 3, icon: '💻', name: '代码助手',
+    desc: '写代码、查 Bug、解释逻辑',
+    prompt: '你是一个经验丰富的全栈工程师。回答时先简要说明思路，再给出可运行代码并注释关键部分。遇到 Bug 说明原因并给出修复方案。'
+  },
+  {
+    id: 4, icon: '📊', name: '数据分析',
+    desc: '解读数据、提炼洞察、生成报告',
+    prompt: '你是一位专业数据分析师。先概括关键发现，再逐步展开细节，最后给出可操作建议。语言简洁，结论明确。'
+  }
+];
+
+// ============================================================
+// 以下为程序逻辑，无需修改
+// ============================================================
+let PROMPTS = [];
+let api = { baseUrl: '', apiKey: '', model: '' };
+let activeId = null;
+let history = [];
+let isLoading = false;
+
+// 配置自动保存与读取
+function loadApiConfig() {
+  try {
+    const saved = localStorage.getItem('ai_toolbox_api');
+    if (saved) {
+      api = JSON.parse(saved);
+      document.getElementById('baseUrl').value = api.baseUrl || '';
+      document.getElementById('apiKey').value = api.apiKey || '';
+      document.getElementById('model').value = api.model || '';
+      updateApiDot();
+    }
+  } catch(e) {}
+}
+
+function saveApi() {
+  api.baseUrl = document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+  api.apiKey = document.getElementById('apiKey').value.trim();
+  api.model = document.getElementById('model').value.trim();
+  try { localStorage.setItem('ai_toolbox_api', JSON.stringify(api)); } catch(e) {}
+  updateApiDot();
+}
+
+function updateApiDot() {
+  const dot = document.getElementById('api-dot');
+  const status = document.getElementById('api-status');
+  if (api.apiKey) {
+    dot.style.background = '#22c55e';
+    status.textContent = '已配置 · ' + (api.model || '未填模型');
+  } else {
+    dot.style.background = '#e2e8f0';
+    status.textContent = '未填写 API Key';
+  }
+}
+
+// 加载指令：优先从远程，失败则用内置
+async function loadPrompts() {
+  const listEl = document.getElementById('prompt-list');
+  if (REMOTE_URL) {
+    try {
+      const res = await fetch(REMOTE_URL + '?t=' + Date.now());
+      if (res.ok) {
+        PROMPTS = await res.json();
+        renderList();
+        return;
+      }
+    } catch(e) {}
+    listEl.innerHTML = '<div class="loading-tip" style="color:#dc2626">指令加载失败，使用内置版本</div>';
+    setTimeout(() => { PROMPTS = FALLBACK_PROMPTS; renderList(); }, 1000);
+  } else {
+    PROMPTS = FALLBACK_PROMPTS;
+    renderList();
+  }
+}
+
+function renderList() {
+  const el = document.getElementById('prompt-list');
+  el.innerHTML = PROMPTS.map(p => `
+    <div class="prompt-item ${activeId===p.id?'active':''}" onclick="selectPrompt(${p.id})">
+      <div class="prompt-item-top">
+        <span class="prompt-icon">${p.icon}</span>
+        <span class="prompt-name">${p.name}</span>
+      </div>
+      <div class="prompt-desc">${p.desc}</div>
+    </div>`).join('');
+}
+
+function selectPrompt(id) {
+  if (activeId === id) return;
+  activeId = id; history = [];
+  const p = PROMPTS.find(x => x.id === id);
+  document.getElementById('topbar-icon').textContent = p.icon;
+  document.getElementById('topbar-name').textContent = p.name;
+  document.getElementById('topbar-desc').textContent = p.desc;
+  document.getElementById('messages').innerHTML = `<div class="msg-row sys"><div class="msg-bubble">已切换到「${p.name}」，开始对话吧</div></div>`;
+  renderList();
+}
+
+function clearChat() {
+  history = [];
+  document.getElementById('messages').innerHTML = activeId
+    ? `<div class="msg-row sys"><div class="msg-bubble">对话已清空</div></div>`
+    : `<div class="empty-chat"><div class="big-icon">👈</div><p>从左侧选择一套 AI 指令</p></div>`;
+}
+
+function toggleApi() {
+  const panel = document.getElementById('api-panel');
+  panel.classList.toggle('open');
+  document.getElementById('api-arrow').textContent = panel.classList.contains('open') ? '▼' : '▶';
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function renderMarkdown(text) {
+  try {
+    return marked.parse(text, { breaks: true, gfm: true });
+  } catch(e) {
+    return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+}
+
+function addMsg(role, text, isHtml) {
+  const box = document.getElementById('messages');
+  const empty = document.getElementById('empty-hint');
+  if (empty) empty.remove();
+  const div = document.createElement('div');
+  if (role === 'sys') {
+    div.className = 'msg-row sys';
+    div.innerHTML = `<div class="msg-bubble">${text}</div>`;
+  } else {
+    div.className = `msg-row ${role}`;
+    const av = role === 'user' ? 'YOU' : (PROMPTS.find(x=>x.id===activeId)?.icon || '🤖');
+    const content = isHtml ? text : (role === 'ai' ? renderMarkdown(text) : text);
+    div.innerHTML = `<div class="msg-avatar">${av}</div><div class="msg-bubble">${content}</div>`;
+  }
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div.querySelector('.msg-bubble');
+}
+
+async function sendMsg() {
+  if (isLoading) return;
+  const inp = document.getElementById('userInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  if (!activeId) { addMsg('sys', '请先从左侧选择一套指令'); return; }
+  if (!api.apiKey) { addMsg('sys', '请先点击左上角「API 配置」填写 API Key'); return; }
+  inp.value = ''; inp.style.height = 'auto';
+  isLoading = true;
+  document.getElementById('send-btn').disabled = true;
+  addMsg('user', text);
+  history.push({ role: 'user', content: text });
+  const bubble = addMsg('ai', '<span style="color:var(--text-faint)">思考中…</span>', true);
+  const p = PROMPTS.find(x => x.id === activeId);
+  const messages = [{ role: 'system', content: p.prompt }, ...history];
+  try {
+    const res = await fetch(api.baseUrl + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + api.apiKey },
+      body: JSON.stringify({ model: api.model, messages, stream: false })
+    });
+    const data = await res.json();
+    if (data.error) {
+      bubble.innerHTML = `<span style="color:#dc2626">错误：${data.error.message}</span>`;
+      history.pop();
+    } else {
+      const reply = data.choices[0].message.content;
+      bubble.innerHTML = renderMarkdown(reply);
+      history.push({ role: 'assistant', content: reply });
+    }
+  } catch(e) {
+    bubble.innerHTML = `<span style="color:#dc2626">请求失败，请检查网络和 API 配置</span>`;
+    history.pop();
+  }
+  isLoading = false;
+  document.getElementById('send-btn').disabled = false;
+}
+
+// 启动
+loadApiConfig();
+loadPrompts();
+</script>
+</body>
+</html>
